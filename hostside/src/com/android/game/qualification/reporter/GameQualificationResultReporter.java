@@ -19,6 +19,7 @@ import com.android.ddmlib.Log;
 import com.android.ddmlib.Log.LogLevel;
 import com.android.ddmlib.testrunner.TestResult.TestStatus;
 import com.android.game.qualification.CertificationRequirements;
+import com.android.game.qualification.metric.GameQualificationFpsCollector;
 import com.android.game.qualification.metric.MetricSummary;
 import com.android.tradefed.config.Option;
 import com.android.tradefed.metrics.proto.MetricMeasurement.Metric;
@@ -32,6 +33,8 @@ import com.android.tradefed.result.TestDescription;
 import com.android.tradefed.result.TestResult;
 import com.android.tradefed.result.TestRunResult;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -52,6 +55,7 @@ public class GameQualificationResultReporter extends CollectingTestListener impl
     private Map<TestDescription, CertificationRequirements> mRequirements = new ConcurrentHashMap<>();
     private List<Throwable> invocationFailures = new ArrayList<>();
     private List<LogFile> mLogFiles = new ArrayList<>();
+    private ILogSaver mLogSaver;
 
     public void putRequirements(TestDescription testId, CertificationRequirements requirements) {
         mRequirements.put(testId, requirements);
@@ -65,7 +69,7 @@ public class GameQualificationResultReporter extends CollectingTestListener impl
 
     /**
      * Collect metrics produces by
-     * {@link com.android.game.qualification.metric.GameQualificationMetricCollector}.
+     * {@link GameQualificationFpsCollector}.
      */
     @Override
     public void testEnded(TestDescription testId, long elapsedTime, HashMap<String, Metric> metrics) {
@@ -93,20 +97,31 @@ public class GameQualificationResultReporter extends CollectingTestListener impl
      */
     @Override
     public void setLogSaver(ILogSaver logSaver) {
-        // Ignore
+        mLogSaver = logSaver;
     }
 
     @Override
     public void invocationEnded(long elapsedTime) {
         super.invocationEnded(elapsedTime);
-        Log.logAndDisplay(LogLevel.INFO, TAG, getInvocationSummary());
+        String summary = getInvocationSummary();
+
+        Log.logAndDisplay(LogLevel.INFO, TAG, summary);
+        try {
+            mLogSaver.saveLogData(
+                    "GameQualification-summary",
+                    LogDataType.TEXT,
+                    new ByteArrayInputStream(summary.getBytes()));
+        } catch (IOException e) {
+            Log.logAndDisplay(
+                    LogLevel.ERROR, TAG, "Failed writing summary to file: " + e.getMessage());
+        }
     }
 
     /**
      * Get the invocation summary as a string.
      */
     private String getInvocationSummary() {
-        if (getRunResults().isEmpty() && mLogFiles.isEmpty()) {
+        if (getMergedTestRunResults().isEmpty() && mLogFiles.isEmpty()) {
             return "No test results\n";
         }
         StringBuilder sb = new StringBuilder();
@@ -134,7 +149,7 @@ public class GameQualificationResultReporter extends CollectingTestListener impl
 
         // Print out device test results.
         sb.append("Test Results:\n");
-        for (TestRunResult testRunResult : getRunResults()) {
+        for (TestRunResult testRunResult : getMergedTestRunResults()) {
             sb.append(getTestRunSummary(testRunResult));
         }
 
@@ -154,12 +169,21 @@ public class GameQualificationResultReporter extends CollectingTestListener impl
         if (hasFailedTests()) {
             certified = false;
             sb.append("Certification failed because the following tests failed:\n");
-            for (TestRunResult testRunResult : getRunResults()) {
+            for (TestRunResult testRunResult : getMergedTestRunResults()) {
                 for (TestDescription test : testRunResult.getFailedTests()) {
                     sb.append('\t');
                     sb.append(test.toString());
                     sb.append('\n');
                 }
+            }
+            try {
+                LogFile logFile = createFunctionalTestFailureReport();
+                sb.append("Details can be found in ");
+                sb.append(logFile.getPath());
+                sb.append('\n');
+            } catch (IOException e) {
+                sb.append("Error generating test failures report: ");
+                sb.append(e.getMessage());
             }
         }
 
@@ -175,6 +199,25 @@ public class GameQualificationResultReporter extends CollectingTestListener impl
         sb.append("\nGame Core Certification: ");
         sb.append(certified ? "PASSED" : "FAILED");
         return "Test results:\n" + sb.toString().trim() + "\n";
+    }
+
+    private LogFile createFunctionalTestFailureReport() throws IOException {
+        StringBuilder sb = new StringBuilder();
+        for (TestRunResult testRunResult : getMergedTestRunResults()) {
+            for (TestDescription test : testRunResult.getFailedTests()) {
+                sb.append("Test:\n");
+                sb.append(test.toString());
+                sb.append('\n');
+                sb.append("Error:\n");
+                TestResult result = testRunResult.getTestResults().get(test);
+                sb.append(result.getStackTrace());
+                sb.append("\n\n");
+            }
+        }
+        return mLogSaver.saveLogData(
+                "failure-report",
+                LogDataType.TEXT,
+                new ByteArrayInputStream(sb.toString().getBytes()));
     }
 
     /**
