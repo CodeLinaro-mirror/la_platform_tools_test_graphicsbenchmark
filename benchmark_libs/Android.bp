@@ -14,7 +14,7 @@
 
 cc_library_shared {
     name: "libagq",
-    sdk_version: "current",
+    sdk_version: "26",
 
     srcs: [
         "agq.cpp"
