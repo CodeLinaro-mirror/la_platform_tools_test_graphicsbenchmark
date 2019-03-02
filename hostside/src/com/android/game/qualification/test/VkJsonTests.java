@@ -17,12 +17,14 @@ package com.android.game.qualification.test;
 
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
+import static com.google.common.truth.Truth.assert_;
 
 import com.android.tradefed.device.DeviceNotAvailableException;
 import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
 import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -43,8 +45,13 @@ public class VkJsonTests extends BaseHostJUnit4Test {
     }
 
     private static class VkJsonDevice {
+        VkJsonDeviceProperties properties;
         VkJsonExtDriverProperties VK_KHR_driver_properties;
         List<VkExtension> extensions;
+    }
+
+    private static class VkJsonDeviceProperties {
+        Long apiVersion;
     }
 
     private static class VkJsonExtDriverProperties {
@@ -77,12 +84,37 @@ public class VkJsonTests extends BaseHostJUnit4Test {
     public void setUp() throws DeviceNotAvailableException {
         String cmdString = getDevice().executeShellCommand("cmd gpu vkjson");
         Gson gson = new Gson();
-        mVkJson = gson.fromJson(cmdString, VkJson.class);
+        try {
+            mVkJson = gson.fromJson(cmdString, VkJson.class);
+        } catch (JsonSyntaxException e) {
+            assert_().fail(
+                    "Error parsing JSON from 'cmd gpu vkjson': %s\nresult: %s",
+                    e.getMessage(),
+                    cmdString);
+        }
 
         assertThat(mVkJson.devices).isNotNull();
         assertThat(mVkJson.devices).isNotEmpty();
     }
 
+    /**
+     * Vulkan version must be at least 1.1.
+     */
+    @Test
+    public void checkRequiredVersion() {
+        final long apiVersion = mVkJson.devices.get(0).properties.apiVersion;
+        final long vulkan11Version = 0x401000;
+        assertWithMessage("Supported Vulkan version must be at least 1.1")
+            .that(apiVersion)
+            .named("supported vulkan version")
+            .isAtLeast(vulkan11Version);
+    }
+
+    /**
+     * The following Vulkan extensions are required:
+     *     VK_GOOGLE_display_timing
+     *     VK_KHR_driver_properties
+     */
     @Test
     public void checkRequiredExtensions() {
         final Collection<String> REQUIRED_EXTENSIONS = Arrays.asList(
@@ -98,6 +130,9 @@ public class VkJsonTests extends BaseHostJUnit4Test {
                 .containsAllIn(REQUIRED_EXTENSIONS);
     }
 
+    /**
+     * Vulkan driver conformance must be at least 1.1.2.
+     */
     @Test
     public void checkKHRDriverProperties() {
         // Check driver conformance version is at least 1.1.2.

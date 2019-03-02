@@ -16,8 +16,9 @@
 package com.android.game.qualification.tests;
 
 import android.provider.Settings;
-import android.support.test.InstrumentationRegistry;
-import android.support.test.runner.AndroidJUnit4;
+
+import androidx.test.InstrumentationRegistry;
+import androidx.test.runner.AndroidJUnit4;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -28,6 +29,10 @@ import org.junit.runner.RunWith;
  */
 @RunWith(AndroidJUnit4.class)
 public class DeviceStateTest {
+
+    /**
+     * Airplane mode should be enabled during certification tests.
+     */
     @Test
     public void isAirplaneModeOn() throws Settings.SettingNotFoundException {
         Assert.assertEquals(

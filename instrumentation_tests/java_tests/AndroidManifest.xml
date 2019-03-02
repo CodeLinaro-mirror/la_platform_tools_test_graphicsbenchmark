@@ -6,10 +6,15 @@
     <uses-sdk android:minSdkVersion="14" />
 
     <instrumentation
-      android:name="android.support.test.runner.AndroidJUnitRunner"
+      android:name="androidx.test.runner.AndroidJUnitRunner"
       android:targetPackage="com.android.game.qualification.tests" />
 
     <application>
         <uses-library android:name="android.test.runner" />
+        <activity android:name="com.android.game.qualification.tests.SurfaceFlingerTestActivity"
+            android:label="SurfaceFlingerTestActivity">
+        </activity>
+        <activity android:name="com.android.game.qualification.tests.ChoreoTestActivity">
+        </activity>
     </application>
 </manifest>
